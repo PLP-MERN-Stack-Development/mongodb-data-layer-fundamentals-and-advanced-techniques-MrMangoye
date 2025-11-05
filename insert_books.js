@@ -174,9 +174,129 @@ async function insertBooks() {
     console.log('Connection closed');
   }
 }
+// Function to perform all tasks after inserting books
+async function runTasks() {
+  const client = new MongoClient(uri);
+
+  try {
+    await client.connect();
+    const db = client.db(dbName);
+    const collection = db.collection(collectionName);
+
+    console.log('\n--- Task 2: Basic CRUD Operations ---');
+
+    // Find all books in a specific genre
+    const fictionBooks = await collection.find({ genre: 'Fiction' }).toArray();
+    console.log(`Fiction books: ${fictionBooks.length}`);
+
+    // Find books published after a certain year
+    const recentBooks = await collection.find({ published_year: { $gt: 1950 } }).toArray();
+    console.log(`Books published after 1950: ${recentBooks.length}`);
+
+    // Find books by a specific author
+    const orwellBooks = await collection.find({ author: 'George Orwell' }).toArray();
+    console.log(`Books by George Orwell: ${orwellBooks.length}`);
+
+    // Update the price of a specific book
+    await collection.updateOne({ title: '1984' }, { $set: { price: 13.99 } });
+    console.log('Updated price of "1984"');
+
+    // Delete a book by its title
+    await collection.deleteOne({ title: 'Moby Dick' });
+    console.log('Deleted "Moby Dick"');
+
+    console.log('\n--- Task 3: Advanced Queries ---');
+
+    // Find books that are in stock and published after 2010
+    const modernStock = await collection.find({ in_stock: true, published_year: { $gt: 2010 } }).toArray();
+    console.log(`In-stock books published after 2010: ${modernStock.length}`);
+
+    // Projection: title, author, price
+    const projectedBooks = await collection.find({}, { projection: { title: 1, author: 1, price: 1, _id: 0 } }).toArray();
+    console.log('Projected fields (title, author, price):');
+    console.table(projectedBooks);
+
+    // Sorting by price ascending
+    const sortedAsc = await collection.find().sort({ price: 1 }).toArray();
+    console.log('Books sorted by price (ascending):');
+    console.table(sortedAsc.map(b => ({ title: b.title, price: b.price })));
+
+    // Sorting by price descending
+    const sortedDesc = await collection.find().sort({ price: -1 }).toArray();
+    console.log('Books sorted by price (descending):');
+    console.table(sortedDesc.map(b => ({ title: b.title, price: b.price })));
+
+    // Pagination: 5 books per page (page 1)
+    const page1 = await collection.find().skip(0).limit(5).toArray();
+    console.log('Page 1 (5 books):');
+    console.table(page1.map(b => ({ title: b.title })));
+
+    console.log('\n--- Task 4: Aggregation Pipeline ---');
+
+    // Average price by genre
+    const avgPriceByGenre = await collection.aggregate([
+      { $group: { _id: '$genre', avgPrice: { $avg: '$price' } } }
+    ]).toArray();
+    console.log('Average price by genre:');
+    console.table(avgPriceByGenre);
+
+    // Author with most books
+    const topAuthor = await collection.aggregate([
+      { $group: { _id: '$author', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 1 }
+    ]).toArray();
+    console.log('Author with most books:');
+    console.table(topAuthor);
+
+    // Group books by publication decade
+    const booksByDecade = await collection.aggregate([
+      {
+        $group: {
+          _id: { $floor: { $divide: ['$published_year', 10] } },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          decade: { $multiply: ['$_id', 10] },
+          count: 1,
+          _id: 0
+        }
+      },
+      { $sort: { decade: 1 } }
+    ]).toArray();
+    console.log('Books grouped by decade:');
+    console.table(booksByDecade);
+
+    console.log('\n--- Task 5: Indexing ---');
+
+    // Create index on title
+    await collection.createIndex({ title: 1 });
+    console.log('Index created on title');
+
+    // Create compound index on author and published_year
+    await collection.createIndex({ author: 1, published_year: 1 });
+    console.log('Compound index created on author and published_year');
+
+    // Use explain to show performance improvement
+    const explainResult = await collection.find({ title: '1984' }).explain('executionStats');
+    console.log('Explain output for title search:');
+    console.log(JSON.stringify(explainResult.executionStats, null, 2));
+
+  } catch (err) {
+    console.error('Error during tasks:', err);
+  } finally {
+    await client.close();
+    console.log('All tasks completed and connection closed');
+  }
+}
+
+// Chain the task runner after insertion
+insertBooks().then(runTasks).catch(console.error);
 
 // Run the function
-insertBooks().catch(console.error);
+//insertBooks().catch(console.error);
 
 /*
  * Example MongoDB queries you can try after running this script:
